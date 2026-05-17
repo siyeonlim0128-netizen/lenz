@@ -142,13 +142,6 @@ export default function ResumeInputPage() {
     const err = validate()
     if (err) { setError(err); return }
 
-    const token = localStorage.getItem('lenz_token')
-    if (!token) {
-      setError('AI 분석은 로그인 후 이용 가능합니다.')
-      navigate('/login')
-      return
-    }
-
     const resumeData: ResumeData = {
       education: { school, grade: year },
       activities: activities.map((a) => a.value).filter(Boolean),
@@ -165,13 +158,6 @@ export default function ResumeInputPage() {
       sessionStorage.setItem('lenz_result', JSON.stringify(result))
       navigate('/result')
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : ''
-      // 인증 오류면 로그인으로
-      if (msg.includes('401') || msg.includes('403') || msg.includes('인증') || msg.includes('로그인')) {
-        setError('로그인이 필요합니다.')
-        navigate('/login')
-        return
-      }
       // 백엔드 오류 시 목 데이터로 진행 (시연용)
       const mockResult = buildMockResult(resumeData)
       sessionStorage.setItem('lenz_resume', JSON.stringify(resumeData))

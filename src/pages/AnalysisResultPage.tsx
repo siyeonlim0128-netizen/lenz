@@ -14,6 +14,32 @@ const STRENGTH_COLORS = [
   'bg-pink-100 text-pink-700',
 ]
 
+// 문자열 / 객체 둘 다 안전하게 렌더링
+const renderItem = (item: unknown): string => {
+  if (item == null) return ''
+  if (typeof item === 'string') return item
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+  if (typeof item === 'object') {
+    const obj = item as Record<string, unknown>
+    // 흔한 필드 우선순위로 뽑아내기
+    const candidate =
+      obj.title ??
+      obj.name ??
+      obj.text ??
+      obj.description ??
+      obj.content ??
+      obj.label ??
+      obj.value
+    if (candidate != null) return String(candidate)
+    try {
+      return JSON.stringify(obj)
+    } catch {
+      return ''
+    }
+  }
+  return String(item)
+}
+
 export default function AnalysisResultPage() {
   const navigate = useNavigate()
   const [result, setResult] = useState<AnalyzeResult | null>(null)
@@ -31,12 +57,20 @@ export default function AnalysisResultPage() {
       navigate('/resume')
       return
     }
-    const parsed: AnalyzeResult = JSON.parse(stored)
-    setResult(parsed)
+    try {
+      const parsed: AnalyzeResult = JSON.parse(stored)
+      // 디버깅용 — 데이터 구조 확인 후 지워도 됨
+      console.log('🔍 result structure:', parsed)
+      setResult(parsed)
 
-    // Fetch real job postings using first interest as tag
-    const tags = parsed.recommendedJobs?.[0]?.jobName || ''
-    getPostings(tags, 5).then(setPostings).catch(() => {})
+      // Fetch real job postings using first interest as tag
+      const tags = parsed.recommendedJobs?.[0]?.jobName || ''
+      getPostings(tags, 5).then(setPostings).catch(() => {})
+    } catch (e) {
+      console.error('Failed to parse lenz_result:', e)
+      sessionStorage.removeItem('lenz_result')
+      navigate('/resume')
+    }
   }, [navigate])
 
   const handleSave = async () => {
@@ -111,13 +145,13 @@ export default function AnalysisResultPage() {
               <p className="mb-2">이 직무와의 적합도: <strong className="text-[#2E6DA4]">{jobs[modalJob].matchPercentage}%</strong></p>
               <p className="font-medium text-gray-700 mb-1">강점</p>
               <ul className="list-disc list-inside space-y-1 mb-2">
-                {jobs[modalJob].strengths?.map((s, i) => <li key={i}>{s}</li>)}
+                {jobs[modalJob].strengths?.map((s, i) => <li key={i}>{renderItem(s)}</li>)}
               </ul>
               {jobs[modalJob].gaps?.length ? (
                 <>
                   <p className="font-medium text-gray-700 mb-1">보완 필요</p>
                   <ul className="list-disc list-inside space-y-1">
-                    {jobs[modalJob].gaps!.map((g, i) => <li key={i}>{g}</li>)}
+                    {jobs[modalJob].gaps!.map((g, i) => <li key={i}>{renderItem(g)}</li>)}
                   </ul>
                 </>
               ) : null}
@@ -149,11 +183,11 @@ export default function AnalysisResultPage() {
                 {strengths.map((kw, i) => (
                   <div key={i} className="relative group">
                     <span className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer ${STRENGTH_COLORS[i % STRENGTH_COLORS.length]}`}>
-                      {kw.keyword}
+                      {renderItem(kw?.keyword ?? kw)}
                     </span>
-                    {kw.reasoning && (
+                    {kw?.reasoning && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 w-52 text-center shadow-lg">
-                        {kw.reasoning}
+                        {renderItem(kw.reasoning)}
                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
                       </div>
                     )}
@@ -184,14 +218,14 @@ export default function AnalysisResultPage() {
                     </div>
                     <ul className="text-xs text-gray-500 space-y-0.5">
                       {job.strengths?.slice(0, 3).map((s, si) => (
-                        <li key={si} className="flex gap-1"><span className="text-green-500">•</span>{s}</li>
+                        <li key={si} className="flex gap-1"><span className="text-green-500">•</span>{renderItem(s)}</li>
                       ))}
                     </ul>
                     {job.gaps?.length ? (
                       <div className="mt-2 pt-2 border-t border-gray-100">
                         <ul className="text-xs text-gray-400 space-y-0.5">
                           {job.gaps.slice(0, 2).map((g, gi) => (
-                            <li key={gi} className="flex gap-1"><span className="text-red-400">•</span>{g}</li>
+                            <li key={gi} className="flex gap-1"><span className="text-red-400">•</span>{renderItem(g)}</li>
                           ))}
                         </ul>
                       </div>
@@ -226,7 +260,7 @@ export default function AnalysisResultPage() {
                       <div className="space-y-2">
                         {currentJob.gapFilling.learnings.map((l, i) => (
                           <div key={i} className="bg-[#F4F6F8] rounded-lg px-3 py-2">
-                            <p className="text-xs text-gray-700">{l}</p>
+                            <p className="text-xs text-gray-700">{renderItem(l)}</p>
                           </div>
                         ))}
                       </div>
@@ -240,7 +274,7 @@ export default function AnalysisResultPage() {
                       <div className="space-y-2">
                         {currentJob.gapFilling.projects.map((p, i) => (
                           <div key={i} className="bg-[#F4F6F8] rounded-lg px-3 py-2">
-                            <p className="text-xs text-gray-700 leading-relaxed">{p}</p>
+                            <p className="text-xs text-gray-700 leading-relaxed">{renderItem(p)}</p>
                           </div>
                         ))}
                       </div>

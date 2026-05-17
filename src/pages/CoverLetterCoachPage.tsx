@@ -6,6 +6,22 @@ import { coachCoverLetter, crawlPosting, type CoachResult } from '../api/coach'
 import type { ResumeData } from '../api/resume'
 import { addBookmark } from '../api/user'
 
+// 객체/문자열 안전 렌더링
+const renderItem = (item: unknown): string => {
+  if (item == null) return ''
+  if (typeof item === 'string') return item
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+  if (typeof item === 'object') {
+    const obj = item as Record<string, unknown>
+    const candidate =
+      obj.title ?? obj.name ?? obj.text ?? obj.content ??
+      obj.description ?? obj.label ?? obj.value ?? obj.message
+    if (candidate != null) return String(candidate)
+    try { return JSON.stringify(obj) } catch { return '' }
+  }
+  return String(item)
+}
+
 export default function CoverLetterCoachPage() {
   const navigate = useNavigate()
   const [inputTab, setInputTab] = useState<'text' | 'url'>('text')
@@ -22,7 +38,11 @@ export default function CoverLetterCoachPage() {
   const getResumeData = (): ResumeData | undefined => {
     const stored = sessionStorage.getItem('lenz_resume')
     if (!stored) return undefined
-    return JSON.parse(stored) as ResumeData
+    try {
+      return JSON.parse(stored) as ResumeData
+    } catch {
+      return undefined
+    }
   }
 
   const handleCrawlAndFill = async () => {
@@ -57,6 +77,8 @@ export default function CoverLetterCoachPage() {
         jobTitle: jobTitle.trim(),
         jobPosting: content.trim(),
       })
+      // 디버깅용 — 진짜 응답 구조 확인. 확인 후 지워도 됨.
+      console.log('🔍 coach response:', res)
       setResult(res)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.')
@@ -65,15 +87,43 @@ export default function CoverLetterCoachPage() {
     }
   }
 
-  const normalizeTips = (tips: CoachResult['tips']) => {
-    if (!tips?.length) return []
-    return tips.map((t, i) => {
+  // 응답 키가 뭐로 오든 안전하게 정규화
+  // coreRequirements (실제) ↔ keyPoints (예전) 둘 다 받음
+  const getKeyPoints = (r: CoachResult | null): unknown[] => {
+    if (!r) return []
+    const raw =
+      (r as any).coreRequirements ??
+      (r as any).keyPoints ??
+      (r as any).requirements ??
+      []
+    return Array.isArray(raw) ? raw : []
+  }
+
+  // guides (실제) ↔ tips (예전) 둘 다 받음, 객체/문자열 모두 정규화
+  const getGuides = (r: CoachResult | null): Array<{ section: string; content: string }> => {
+    if (!r) return []
+    const raw =
+      (r as any).guides ??
+      (r as any).tips ??
+      []
+    if (!Array.isArray(raw)) return []
+    return raw.map((t, i) => {
       if (typeof t === 'string') return { section: `항목 ${i + 1}`, content: t }
-      return {
-        section: t.title || t.section || `항목 ${i + 1}`,
-        content: t.content || t.message || '',
+      if (t && typeof t === 'object') {
+        const obj = t as Record<string, unknown>
+        return {
+          section: renderItem(obj.section ?? obj.title ?? obj.name) || `항목 ${i + 1}`,
+          content: renderItem(obj.content ?? obj.message ?? obj.text ?? obj.description ?? obj),
+        }
       }
+      return { section: `항목 ${i + 1}`, content: renderItem(t) }
     })
+  }
+
+  const getQuestions = (r: CoachResult | null): unknown[] => {
+    if (!r) return []
+    const raw = (r as any).questions ?? []
+    return Array.isArray(raw) ? raw : []
   }
 
   const handleCopyTip = (idx: number, text: string) => {
@@ -84,13 +134,14 @@ export default function CoverLetterCoachPage() {
 
   const handleCopyAll = () => {
     if (!result) return
-    const tips = normalizeTips(result.tips)
+    const guides = getGuides(result)
+    const keyPoints = getKeyPoints(result)
     const parts: string[] = []
-    if (result.keyPoints?.length) {
-      parts.push('=== 핵심 요구사항 ===\n' + result.keyPoints.map((k, i) => `${i + 1}. ${k}`).join('\n'))
+    if (keyPoints.length) {
+      parts.push('=== 핵심 요구사항 ===\n' + keyPoints.map((k, i) => `${i + 1}. ${renderItem(k)}`).join('\n'))
     }
-    if (tips.length) {
-      parts.push('=== 자소서 가이드 ===\n' + tips.map((t) => `[${t.section}]\n${t.content}`).join('\n\n'))
+    if (guides.length) {
+      parts.push('=== 자소서 가이드 ===\n' + guides.map((t) => `[${t.section}]\n${t.content}`).join('\n\n'))
     }
     navigator.clipboard.writeText(parts.join('\n\n'))
     setCopiedAll(true)
@@ -115,7 +166,9 @@ export default function CoverLetterCoachPage() {
     }
   }
 
-  const tips = result ? normalizeTips(result.tips) : []
+  const keyPoints = getKeyPoints(result)
+  const guides = getGuides(result)
+  const questions = getQuestions(result)
 
   return (
     <div className="min-h-screen bg-[#F4F6F8]">
@@ -218,34 +271,34 @@ export default function CoverLetterCoachPage() {
               </div>
             )}
 
-            {result && result.keyPoints?.length ? (
+            {keyPoints.length > 0 ? (
               <div className="bg-white rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-sm">🎯</span>
                   <h3 className="font-bold text-gray-800 text-sm">핵심 요구사항</h3>
                 </div>
                 <ol className="space-y-2">
-                  {result.keyPoints.map((req, i) => (
+                  {keyPoints.map((req, i) => (
                     <li key={i} className="flex gap-3 bg-[#F4F6F8] rounded-xl px-3 py-2.5">
                       <span className="w-5 h-5 rounded-full bg-[#5B9BD5] text-white text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
-                      <p className="text-xs text-gray-700 leading-relaxed">{req}</p>
+                      <p className="text-xs text-gray-700 leading-relaxed">{renderItem(req)}</p>
                     </li>
                   ))}
                 </ol>
               </div>
             ) : null}
 
-            {result && result.questions?.length ? (
+            {questions.length > 0 ? (
               <div className="bg-white rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-sm">❓</span>
                   <h3 className="font-bold text-gray-800 text-sm">예상 자소서 문항</h3>
                 </div>
                 <ol className="space-y-2">
-                  {result.questions.map((q, i) => (
+                  {questions.map((q, i) => (
                     <li key={i} className="flex gap-3 bg-[#F4F6F8] rounded-xl px-3 py-2.5">
                       <span className="w-5 h-5 rounded-full bg-[#A8C8E8] text-[#2E6DA4] text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
-                      <p className="text-xs text-gray-700 leading-relaxed">{q}</p>
+                      <p className="text-xs text-gray-700 leading-relaxed">{renderItem(q)}</p>
                     </li>
                   ))}
                 </ol>
@@ -255,7 +308,7 @@ export default function CoverLetterCoachPage() {
 
           {/* Right: Guide */}
           <div className="space-y-4">
-            {result && tips.length > 0 ? (
+            {guides.length > 0 ? (
               <div className="bg-white rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-sm">✏️</span>
@@ -263,13 +316,13 @@ export default function CoverLetterCoachPage() {
                 </div>
 
                 <div className="space-y-4">
-                  {tips.map((item, idx) => (
+                  {guides.map((item, idx) => (
                     <div key={idx} className="border border-gray-100 rounded-xl overflow-hidden">
                       <div className="bg-[#F4F6F8] px-4 py-2.5 flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-700">{item.section}</span>
                       </div>
                       <div className="px-4 py-3">
-                        <p className="text-xs text-gray-600 leading-relaxed">{item.content}</p>
+                        <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">{item.content}</p>
                         <button
                           onClick={() => handleCopyTip(idx, `[${item.section}]\n${item.content}`)}
                           className="mt-2 text-xs text-[#5B9BD5] hover:text-[#2E6DA4] flex items-center gap-1"

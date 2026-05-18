@@ -98,8 +98,9 @@ export default function ResumeInputPage() {
       const result = await parseResume(file)
       applyParsedData(result.resumeData)
       setInputMode('form')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'PDF 파싱에 실패했습니다.')
+    } catch {
+      setInputMode('form')
+      setError('PDF 자동 파싱을 사용할 수 없습니다. 아래 양식에 직접 입력해주세요.')
     } finally {
       setParsing(false)
     }

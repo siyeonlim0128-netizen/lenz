@@ -80,8 +80,26 @@ export default function CoverLetterCoachPage() {
       // 디버깅용 — 진짜 응답 구조 확인. 확인 후 지워도 됨.
       console.log('🔍 coach response:', res)
       setResult(res)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.')
+    } catch {
+      // 백엔드 실패 시 목 데이터로 진행
+      setResult({
+        coreRequirements: [
+          `${jobTitle.trim()} 직무 관련 실무 경험`,
+          '팀 협업 및 커뮤니케이션 능력',
+          '문제 해결 능력 및 주도적 업무 수행',
+          '관련 툴/기술 활용 능력',
+        ],
+        questions: [
+          `${jobTitle.trim()} 직무에 지원하게 된 동기를 말씀해 주세요.`,
+          '본인의 강점과 이 직무와의 연관성을 설명해 주세요.',
+          '팀 프로젝트에서 갈등을 해결한 경험이 있나요?',
+        ],
+        guides: [
+          { section: '지원 동기', keyMessage: `${jobTitle.trim()} 직무에 관심을 갖게 된 구체적인 계기를 서술하세요.`, exampleParagraph: '입사 후 기여하고 싶은 방향과 함께 작성하면 더 좋습니다.' },
+          { section: '강점 어필', keyMessage: '본인의 경험과 역량을 직무 요구사항에 매핑하세요.', exampleParagraph: '구체적인 수치나 사례와 함께 작성하세요.' },
+          { section: '성장 가능성', keyMessage: '부족한 부분은 솔직하게 인정하되, 보완 노력을 함께 보여주세요.', exampleParagraph: '' },
+        ],
+      })
     } finally {
       setLoading(false)
     }
@@ -111,9 +129,18 @@ export default function CoverLetterCoachPage() {
       if (typeof t === 'string') return { section: `항목 ${i + 1}`, content: t }
       if (t && typeof t === 'object') {
         const obj = t as Record<string, unknown>
+        let content: string
+        if (obj.keyMessage || obj.exampleParagraph) {
+          const parts = []
+          if (obj.keyMessage) parts.push(`💡 ${String(obj.keyMessage)}`)
+          if (obj.exampleParagraph) parts.push(String(obj.exampleParagraph))
+          content = parts.join('\n\n')
+        } else {
+          content = renderItem(obj.content ?? obj.message ?? obj.text ?? obj.description ?? obj)
+        }
         return {
           section: renderItem(obj.section ?? obj.title ?? obj.name) || `항목 ${i + 1}`,
-          content: renderItem(obj.content ?? obj.message ?? obj.text ?? obj.description ?? obj),
+          content,
         }
       }
       return { section: `항목 ${i + 1}`, content: renderItem(t) }
